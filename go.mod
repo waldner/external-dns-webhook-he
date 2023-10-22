@@ -1,4 +1,4 @@
-module github.com/waldner/external-dns-he-webhook
+module github.com/waldner/external-dns-webhook-he
 
 go 1.21
 

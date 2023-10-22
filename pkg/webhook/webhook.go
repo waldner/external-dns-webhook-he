@@ -4,42 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/waldner/external-dns-he-webhook/pkg/config"
+	"github.com/waldner/external-dns-webhook-he/pkg/provider"
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 )
 
-type Webhook interface {
-	Negotiate(w http.ResponseWriter, r *http.Request)
-	Records(w http.ResponseWriter, r *http.Request)
-	AdjustEndpoints(w http.ResponseWriter, r *http.Request)
-	ApplyChanges(w http.ResponseWriter, r *http.Request)
-}
-
-type heWebhook struct {
-	Conf   *config.Config
-	Client *http.Client
+type Webhook struct {
+	provider *provider.Provider
 }
 
 const (
 	contentTypeValue = "application/external.dns.webhook+json;version=1"
 )
 
-func NewWebhook(conf *config.Config) (Webhook, error) {
-
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, fmt.Errorf("NewWebHook: error creating cookie jar: %s", err)
-	}
-
-	client := &http.Client{
-		Jar: jar,
-	}
-
-	return &heWebhook{conf, client}, nil
+func NewWebhook(provider *provider.Provider) (*Webhook, error) {
+	return &Webhook{provider}, nil
 }
 
 func Health(next http.Handler) http.Handler {
@@ -53,16 +34,16 @@ func Health(next http.Handler) http.Handler {
 }
 
 // return domain filter
-func (h *heWebhook) Negotiate(w http.ResponseWriter, r *http.Request) {
+func (h *Webhook) Negotiate(w http.ResponseWriter, r *http.Request) {
 
 	log.Debugf("******************* Received request in Negotiate: %+v", r)
-	err := checkHeader(r, "Accept")
+	err := checkHeader(w, r, "Accept")
 	if err != nil {
-		log.Error("Negotiate: %s", err)
+		log.Errorf("Negotiate: %s", err)
 		return
 	}
 
-	df, err := h.Conf.DomainFilter.MarshalJSON()
+	df, err := h.provider.DomainFilter().MarshalJSON()
 	if err != nil {
 		log.Errorf("Negotiate: failed to marshal domain filter, request method: %s, request path: %s, error: %s", r.Method, r.URL.Path, err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -80,16 +61,16 @@ func (h *heWebhook) Negotiate(w http.ResponseWriter, r *http.Request) {
 
 // GET to /records
 // return all records matching the domain filters
-func (h *heWebhook) Records(w http.ResponseWriter, r *http.Request) {
+func (h *Webhook) Records(w http.ResponseWriter, r *http.Request) {
 
 	log.Debugf("******************** Received request in Records: %+v", r)
-	err := checkHeader(r, "Accept")
+	err := checkHeader(w, r, "Accept")
 	if err != nil {
-		log.Error("Records: %s", err)
+		log.Errorf("Records: %s", err)
 		return
 	}
 
-	endpoints, err := getAllRecords(h)
+	endpoints, err := h.provider.GetAllRecords()
 	if err != nil {
 		log.Errorf("Records: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -109,17 +90,17 @@ func (h *heWebhook) Records(w http.ResponseWriter, r *http.Request) {
 
 // POST to /adjustendpoints
 // IIUC we can just return the same list here
-func (h *heWebhook) AdjustEndpoints(w http.ResponseWriter, r *http.Request) {
+func (h *Webhook) AdjustEndpoints(w http.ResponseWriter, r *http.Request) {
 
 	log.Debugf("******************** Received request in AdjustEndpoints: %+v", r)
-	err := checkHeader(r, "Accept")
+	err := checkHeader(w, r, "Accept")
 	if err != nil {
-		log.Error("AdjustEndpoints: %s", err)
+		log.Errorf("AdjustEndpoints: %s", err)
 		return
 	}
-	err = checkHeader(r, "Content-Type")
+	err = checkHeader(w, r, "Content-Type")
 	if err != nil {
-		log.Error("AdjustEndpoints: %s", err)
+		log.Errorf("AdjustEndpoints: %s", err)
 		return
 	}
 
@@ -139,7 +120,12 @@ func (h *heWebhook) AdjustEndpoints(w http.ResponseWriter, r *http.Request) {
 
 	log.Debugf("Json decoding successful, endpoints are %d: %+v", len(endpoints), endpoints)
 
-	endpoints = adjustEndpoints(endpoints)
+	endpoints, err = h.provider.AdjustEndpoints(endpoints)
+	if err != nil {
+		log.Errorf("AdjustEndpoints: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	out, err := json.Marshal(&endpoints)
 	if err != nil {
 		log.Errorf("AdjustEndpoints: error marshaling return values: %s", err)
@@ -154,10 +140,10 @@ func (h *heWebhook) AdjustEndpoints(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST to /records
-func (h *heWebhook) ApplyChanges(w http.ResponseWriter, r *http.Request) {
+func (h *Webhook) ApplyChanges(w http.ResponseWriter, r *http.Request) {
 
 	log.Debugf("******************** Received request in ApplyChanges: %+v", r)
-	err := checkHeader(r, "Content-Type")
+	err := checkHeader(w, r, "Content-Type")
 	if err != nil {
 		log.Errorf("ApplyChanges: %s", err)
 		return
@@ -176,7 +162,7 @@ func (h *heWebhook) ApplyChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = applyChanges(&changes, h)
+	err = h.provider.ApplyChanges(&changes)
 	if err != nil {
 		log.Errorf("ApplyChanges: %s", err)
 		w.Header().Set("Content-Type", "text/plain")
@@ -187,7 +173,7 @@ func (h *heWebhook) ApplyChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 // check that the given header is "application/external.dns.webhook+json;version=1"
-func checkHeader(r *http.Request, headerName string) error {
+func checkHeader(w http.ResponseWriter, r *http.Request, headerName string) error {
 
 	headerValue := r.Header[headerName]
 	if len(headerValue) == 1 {
@@ -195,9 +181,24 @@ func checkHeader(r *http.Request, headerName string) error {
 			log.Debugf("'%s' header is present, value is %s", headerName, headerValue[0])
 			return nil
 		} else {
-			return fmt.Errorf("checkHeader: '%s' header does not have the right value: %s", headerName, headerValue[0])
+			msg := fmt.Sprintf("'%s' header does not have the right value: %s", headerName, headerValue[0])
+			writeError(w, msg, http.StatusUnsupportedMediaType)
+			return fmt.Errorf("checkHeader: %s", msg)
 		}
 	}
 
-	return fmt.Errorf("checkHeader: '%s' header not present or present more than once", headerName)
+	msg := fmt.Sprintf("'%s' header not present or present more than once", headerName)
+	writeError(w, msg, http.StatusNotAcceptable)
+	return fmt.Errorf("checkHeader: %s", msg)
+}
+
+func writeError(w http.ResponseWriter, msg string, status int) {
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(status)
+	_, err := fmt.Fprint(w, msg)
+
+	if err != nil {
+		log.Errorf("error writing error message to response writer: %s", err)
+	}
 }

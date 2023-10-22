@@ -7,8 +7,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	log "github.com/sirupsen/logrus"
-	heconfig "github.com/waldner/external-dns-he-webhook/pkg/config"
-	"github.com/waldner/external-dns-he-webhook/pkg/webhook"
+	"github.com/waldner/external-dns-webhook-he/pkg/client"
+	"github.com/waldner/external-dns-webhook-he/pkg/config"
+	"github.com/waldner/external-dns-webhook-he/pkg/provider"
+	"github.com/waldner/external-dns-webhook-he/pkg/webhook"
 )
 
 var version = "0.0.2"
@@ -43,14 +45,24 @@ func main() {
 	initLog()
 	log.WithFields(log.Fields{"version": version}).Info("Starting external-dns-webhook-he")
 
-	heConfig, err := heconfig.NewHEConfig()
+	heConfig, domainFilter, err := config.NewConfig()
 	if err != nil {
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
-	hook, err := webhook.NewWebhook(heConfig)
+	client, err := client.NewClient(heConfig)
 	if err != nil {
-		os.Exit(1)
+		log.Fatal(err)
+	}
+
+	provider, err := provider.NewProvider(client, domainFilter)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	hook, err := webhook.NewWebhook(provider)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	r := chi.NewRouter()

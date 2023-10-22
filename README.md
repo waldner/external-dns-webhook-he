@@ -39,7 +39,7 @@ interval: 60m
 triggerLoopOnEvent: true
 logLevel: trace
 txtPrefix: "zzz-"
-policy: upsert-only
+policy: upsert-only   # or "sync" for full sync (ie also deletions)
 txtOwnerId: blah
 
 extraArgs:
@@ -47,7 +47,7 @@ extraArgs:
 
 sidecars:
   - name: he-webhook
-    image: ghcr.io/waldner/external-dns-webhook:0.0.2   # or whatever
+    image: ghcr.io/waldner/external-dns-webhook-he:0.0.2   # or whatever
     imagePullPolicy: IfNotPresent
     ports:
       - containerPort: 3333
@@ -113,6 +113,23 @@ Note that you must only use one of the two possible filtering mechanisms, either
 
 ## Miscellaneous notes
 
-- HE DNS does not allow the creation of wildcard records, so don't use wildcards for your names. In case a wildcard name slips through, the record creation will fail.
+- HE DNS does not allow the creation of wildcard records, so *don't use wildcards for your names*. In case a wildcard name slips through, the record creation will fail.
 
-- To perform its actions, the webhook basically logs into the HE dashboard the same way a browser would (there's no API), so to avoid unnecessary traffic I would advise to set a very high polling interval and enable the `triggerLoopOnEvent` option, so records will still be updated when there is a change on the k8s side. If you don't expect to have external changes on the DNS side, you can set a very high polling interval. In any case, definitely please set it (much) higher than the default 1 minute. This is not AWS.
+## Disclaimer
+
+*Fact 1:* From [HE's TOS](https://dns.he.net/tos.html):
+
+```
+Hurricane reserves the right to remove or block any user provided records
+that comes to its attention and that it believes, in its sole discretion, 
+..., (ii) violates the rights of others, or degrades the performance of the service. 
+(iii) abuse or fraudulently use the Service, (iv) use the Service in a
+manner that causes interference to or tampers with another subscriber's or 
+authorized user's use of the DNS service, ...
+```
+
+*Fact 2:* By default, external-dns has a polling period of _1 (one) minute_.
+
+*You definitely do NOT want to be sending requests to HE every minute.* This is not AWS. The service must be used wisely. It's a good service that works well, so everybody should take care to not cause trouble.
+
+To perform its actions, the webhook basically logs into the HE dashboard the same way a normal user would, so to avoid unnecessary traffic you should set a very high polling interval and enable the `triggerLoopOnEvent` option, so records will still be updated when there is a change on the k8s side. Especially if you don't expect to have external changes on the DNS side, you should really set a very high polling interval (hours, or days). In any case, definitely please set it (much) higher than the default 1 minute. *YOU ARE RESPONSIBLE FOR ALL TRAFFIC PRODUCED BY YOUR ACCOUNT (INCLUDING ABUSE AND EXCESSIVE USAGE) WHEN USING THIS WEBHOOK.* Configure it appropriately.
