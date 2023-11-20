@@ -24,7 +24,8 @@ var TestData map[string]*ZoneInfo = map[string]*ZoneInfo{
 	"foo.zzz": &ZoneInfo{
 		ZoneData: &ZoneData{},
 		Endpoints: []*endpoint.Endpoint{
-			endpoint.NewEndpoint("single.foo.zzz", "A", "172.16.100.199", "172.16.100.200"),
+			endpoint.NewEndpoint("single.foo.zzz", "A", "172.16.100.199"),
+			endpoint.NewEndpoint("single.foo.zzz", "A", "172.16.100.200"),
 			endpoint.NewEndpoint("bbb.foo.zzz", "A", "172.17.100.199"),
 		},
 	},
@@ -41,14 +42,8 @@ type TestCase struct {
 
 var TestCases []*TestCase = []*TestCase{
 	&TestCase{
-		IncludeList: []string{"foo.bar", "foo.baz"},
-		AdjustEndpointsInput: []*endpoint.Endpoint{
-			endpoint.NewEndpoint("aaa.foo.bar", "A", "10.1.1.1"),
-			endpoint.NewEndpoint("bbb.foo.bar", "A", "10.9.1.99"),
-			endpoint.NewEndpoint("ccc.foo.bar", "A", "10.10.1.78"),
-			endpoint.NewEndpoint("ddd.foo.bar", "A", "10.8.1.56"),
-			endpoint.NewEndpoint("eee.foo.bar", "A", "10.4.1.22"),
-		},
+		IncludeList:          []string{"foo.bar", "foo.baz"},
+		AdjustEndpointsInput: append(TestData["foo.bar"].Endpoints, TestData["foo.baz"].Endpoints...),
 		ApplyChangesInput: &plan.Changes{
 			Create: []*endpoint.Endpoint{
 				endpoint.NewEndpoint("aaa.foo.bar", "A", "10.1.1.1"),
@@ -65,11 +60,8 @@ var TestCases []*TestCase = []*TestCase{
 		},
 	},
 	&TestCase{
-		IncludeList: []string{"foo.zzz"},
-		AdjustEndpointsInput: []*endpoint.Endpoint{
-			endpoint.NewEndpoint("aaa.foo.zzz", "A", "10.1.1.1"),
-			endpoint.NewEndpoint("bbb.foo.zzz", "A", "192.168.1.99"),
-		},
+		IncludeList:          []string{"foo.zzz"},
+		AdjustEndpointsInput: TestData["foo.zzz"].Endpoints,
 		ApplyChangesInput: &plan.Changes{
 			Create: []*endpoint.Endpoint{
 				endpoint.NewEndpoint("aaa.foo.zzz", "A", "10.1.1.1"),

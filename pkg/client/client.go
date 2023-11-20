@@ -278,12 +278,14 @@ func (c *HEClient) CreateRecords(zone string, zoneData *common.ZoneData, records
 		return fmt.Errorf("CreateRecords: %s", err)
 	}
 
+	log.Infof("==== Start record creation ====")
 	for _, record := range records {
 		err = c.createRecord(zone, zoneData, existingRecords, record)
 		if err != nil {
 			return fmt.Errorf("CreateRecords: %s", err)
 		}
 	}
+	log.Infof("==== End record creation ====")
 	return nil
 }
 
@@ -336,12 +338,14 @@ func (c *HEClient) DeleteRecords(zone string, zoneData *common.ZoneData, records
 		return fmt.Errorf("deleteRecords: %s", err)
 	}
 
+	log.Infof("==== Start record deletion ====")
 	for _, record := range records {
 		err = c.deleteRecord(zone, zoneData, existingRecords, record)
 		if err != nil {
 			return fmt.Errorf("DeleteRecords: %s", err)
 		}
 	}
+	log.Infof("==== End record deletion ====")
 	return nil
 }
 

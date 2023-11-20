@@ -24,6 +24,8 @@ type ClientService interface {
 	DeleteRecords(string, *common.ZoneData, []*endpoint.Endpoint) error
 }
 
+var allEndpoints []*endpoint.Endpoint
+
 // func NewProvider(client *client.HEClient) (*Provider, error) {
 func NewProvider(client ClientService, domainFilter *endpoint.DomainFilter) (*Provider, error) {
 	return &Provider{
@@ -52,7 +54,7 @@ func (p *Provider) GetAllRecords() ([]*endpoint.Endpoint, error) {
 
 	log.Debugf("Matching zones according to domain filter: %v", zones)
 
-	allEndpoints := []*endpoint.Endpoint{}
+	allEndpoints = []*endpoint.Endpoint{}
 
 	for zone, zoneData := range zones {
 		endpoints, err := p.client.GetZoneEndpoints(zone, zoneData)
@@ -68,8 +70,28 @@ func (p *Provider) GetAllRecords() ([]*endpoint.Endpoint, error) {
 
 }
 
-func (p *Provider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
-	return endpoints, nil
+// here is where we add provider-specific properties to the desired endpoints,
+// so they match the current ones (if they exist, of course).
+// Use allEndpoints to get info about the existing ones.
+func (p *Provider) AdjustEndpoints(desiredEndpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+
+	adjustedEndpoints := []*endpoint.Endpoint{}
+
+	for _, endpoint := range common.ExpandRecords(desiredEndpoints) {
+		// look for endpoint in allEndpoints
+		log.Debugf("Adjustendpoints: looking for endpoint %s in allEndpoints", endpoint)
+		for _, existingEndpoint := range allEndpoints {
+			if existingEndpoint.DNSName == endpoint.DNSName && existingEndpoint.RecordType == endpoint.RecordType && existingEndpoint.Targets[0] == endpoint.Targets[0] {
+				// copy provider-specific stuff
+				endpoint.ProviderSpecific = existingEndpoint.ProviderSpecific
+				break
+			}
+
+		}
+		adjustedEndpoints = append(adjustedEndpoints, endpoint)
+	}
+
+	return adjustedEndpoints, nil
 }
 
 func (p *Provider) ApplyChanges(changes *plan.Changes) error {
