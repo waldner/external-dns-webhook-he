@@ -24,16 +24,9 @@ stringData:
 
 ```
 
-The webhook runs as a sidecar container to the main exernaldns pod. Here is a sample `values.yaml` for use with Bitnami's externaldns chart, which uses the above secret to extract the values of environment variables to inject into the webhook container:
+The webhook runs as a sidecar container to the main exernaldns pod. Here is a sample `values.yaml` for use with Bitnami's externaldns chart, which uses the above secret to extract the values of environment variables to inject into the webhook container. *NOTE: you must use a version >= 6.28.2 of the bitnami chart, which includes external-dns with webhook support*.
 
 ```
-# special version of externalds with webhook support,
-# waiting for a release
-image:
-  registry: docker.io
-  repository: waldner/external-dns
-  tag: v0.13.6-126-gd7cec324-dirty
-
 provider: webhook
 interval: 60m
 triggerLoopOnEvent: true
@@ -47,7 +40,7 @@ extraArgs:
 
 sidecars:
   - name: he-webhook
-    image: ghcr.io/waldner/external-dns-webhook-he:0.0.2   # or whatever
+    image: ghcr.io/waldner/external-dns-webhook-he:0.0.4   # or whatever
     imagePullPolicy: IfNotPresent
     ports:
       - containerPort: 3333
